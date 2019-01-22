@@ -1,0 +1,203 @@
+             Excel.Application xlApp;
+             Excel.Workbook xlWorkBook;
+             Excel.Worksheet xlWorkSheet;  
+             object misValue = System.Reflection.Missing.Value;
+             
+            xlApp = new Excel.Application();
+            xlWorkBook = xlApp.Workbooks.Add(misValue);
+            xlWorkSheet = (Excel.Worksheet)xlWorkBook.Worksheets.get_Item(1);
+
+
+            Excel.Workbook wb = xlApp.ActiveWorkbook;
+            Excel.Worksheet ws = (Excel.Worksheet)wb.ActiveSheet;
+            Excel.Range range = ws.get_Range("A1", "D1");
+            range.Font.Bold = true;
+
+            xlWorkSheet.Range[xlWorkSheet.Cells[1, 6], xlWorkSheet.Cells[1, 7]].Merge();
+
+            range = ws.get_Range("F1", "F6");
+            range.Font.Bold = true;
+
+            range = ws.get_Range("F1", "G6");
+            Excel.Borders border = range.Borders;
+            border.LineStyle = Excel.XlLineStyle.xlContinuous;
+            border.Weight = 3d;
+
+            xlWorkSheet.Cells[1, 6] = "Settings";
+            xlWorkSheet.Cells[2, 6] = "Voltmeter Channel";
+            xlWorkSheet.Cells[2, 7] = chanV;
+            xlWorkSheet.Cells[3, 6] = "Thermocouple Channel";
+            xlWorkSheet.Cells[3, 7] = chanT;
+            xlWorkSheet.Cells[4, 6] = "Thermocouple Type";
+            xlWorkSheet.Cells[4, 7] = thermT;
+            xlWorkSheet.Cells[5, 6] = "Current Value";
+            xlWorkSheet.Cells[5, 7] = "=" + currV;
+            xlWorkSheet.Cells[6, 6] = "R0";
+            xlWorkSheet.Cells[6, 7] = "=" + voltValue[0] + "/$G$5";
+
+
+            xlWorkSheet.Cells[1, 1] = "Time (Milli Sec)";
+            xlWorkSheet.Cells[1, 2] = "Voltage (Volts)";
+            xlWorkSheet.Cells[1, 3] = "Temperature (°C)";
+            xlWorkSheet.Cells[1, 4] = "Resistance/R0";
+            xlWorkSheet.Columns[1].ColumnWidth = 15;
+            xlWorkSheet.Columns[2].ColumnWidth = 15;
+            xlWorkSheet.Columns[3].ColumnWidth = 15;
+            xlWorkSheet.Columns[4].ColumnWidth = 15;
+            xlWorkSheet.Columns[5].ColumnWidth = 5;
+            xlWorkSheet.Columns[6].ColumnWidth = 23;
+
+            for (i = 0; i < testCont; i++)
+            {
+                try    //Tenta colocar os valores obtdos
+                {
+                    xlWorkSheet.Cells[i + 2, 1] = "=" + (3500 * i + 1000);
+                    xlWorkSheet.Cells[i + 2, 2] = "=ABS(" + voltValue[i] + ")";    //Função ABS(num) retorna o módulo de num
+                    xlWorkSheet.Cells[i + 2, 3] = "=" + tempValue[i];
+                    xlWorkSheet.Cells[i + 2, 4] = "=B" + (i + 2) + "/($G$5*$G$6)";
+                }
+
+                catch    //Caso tenha erro, ha a opção de apagar os valores à frente do erro ou esperar pra salvar
+                {
+                    DialogResult dialogResult = MessageBox.Show("There is an error at test " + (i+1) + ".\r\n" +
+                                                                "Did you want to create file removing this test and others successive to it?", 
+                                                                "Create File?", MessageBoxButtons.YesNo);
+                    if (dialogResult == DialogResult.Yes)
+                    {
+                        testCont = i;
+                        errorFlag = 1;
+                    }
+                    else if (dialogResult == DialogResult.No)
+                    {
+
+                        xlWorkBook.Close(false, misValue, misValue);
+                        xlApp.Quit();                                //Fecha o arquivo excel
+
+                        liberarObjetos(xlWorkSheet);
+                        liberarObjetos(xlWorkBook);
+                        liberarObjetos(xlApp);
+
+                        errorFlag = 0;
+                        return;                                //Sai da função
+                    }
+                }
+            }
+
+            //  ORGANIZAR COLUNA EM ORDEM CRESCENTE
+            range = ws.get_Range("A1", "B" + testCont + 1);
+            ws.Sort.SortFields.Clear();
+            ws.Sort.SetRange(range);
+            ws.Sort.SortFields.Add(ws.get_Range("B1", "B" + testCont + 1), 0, SortOrder.Ascending);
+            ws.Sort.Header = Excel.XlYesNoGuess.xlYes;
+            ws.Sort.MatchCase = false;
+            ws.Sort.Orientation = Excel.XlSortOrientation.xlSortColumns;
+            ws.Sort.SortMethod = Excel.XlSortMethod.xlPinYin;
+            ws.Sort.Apply();
+            
+
+            //Gráfico Resistência x Temperatura
+            Excel.ChartObjects ctsTemp = (Excel.ChartObjects)xlWorkSheet.ChartObjects(Type.Missing);
+            Excel.ChartObject ctTemp = (Excel.ChartObject)ctsTemp.Add(360, 410, 580, 300);
+            Excel.Chart ctTempPage = ctTemp.Chart;
+            ctTemp.Select();
+            ctTempPage.ChartType = Excel.XlChartType.xlXYScatterLines;
+            Excel.SeriesCollection seriesCollectionTemp = ctTempPage.SeriesCollection();
+
+            ctTempPage.HasTitle = true;
+            ctTempPage.ChartTitle.Text = "Resistance per temperature";
+            Excel.Axis yTempAxis = (Excel.Axis)ctTempPage.Axes(Excel.XlAxisType.xlValue, Excel.XlAxisGroup.xlPrimary);
+            yTempAxis.HasTitle = true;
+            yTempAxis.AxisTitle.Text = "Resistance/R0";
+            Excel.Axis xTempAxis = (Excel.Axis)ctTempPage.Axes(Excel.XlAxisType.xlCategory, Excel.XlAxisGroup.xlPrimary);
+            xTempAxis.HasTitle = true;
+            xTempAxis.AxisTitle.Text = "Temperature (°C)Resistance/R0";
+
+            Excel.Series oSeriesTempRes = seriesCollectionTemp.NewSeries();
+            oSeriesTempRes.XValues = xlWorkSheet.get_Range("C2", "C" + testCont + 1);
+            oSeriesTempRes.Values = xlWorkSheet.get_Range("D2", "D" + testCont + 1);
+            oSeriesTempRes.AxisGroup = Excel.XlAxisGroup.xlPrimary;
+            oSeriesTempRes.Name = "Serie 1";  //nome da série de pontos
+            oSeriesTempRes.MarkerSize = 5;   //tamanho do ponto da curva
+            oSeriesTempRes.MarkerStyle = Excel.XlMarkerStyle.xlMarkerStyleCircle;   //estilo do ponto da curva
+            oSeriesTempRes.MarkerForegroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)5;   //5 = Azul
+            oSeriesTempRes.MarkerBackgroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)5;   //5 = Azul
+
+            //Gráfico Temperatura e resistencia pelo tempo
+            Excel.ChartObjects ctsTime = (Excel.ChartObjects)xlWorkSheet.ChartObjects(Type.Missing);
+            Excel.ChartObject ctTime = (Excel.ChartObject)ctsTime.Add(360, 100, 580, 300);
+            Excel.Chart ctTimePage = ctTime.Chart;
+            ctTime.Select();
+            ctTimePage.ChartType = Excel.XlChartType.xlXYScatterLines;
+            Excel.SeriesCollection seriesCollectionTime = ctTimePage.SeriesCollection();
+
+
+            Excel.Series oSeriesTempTime = seriesCollectionTime.NewSeries();
+            oSeriesTempTime.XValues = xlWorkSheet.get_Range("A2", "A" + testCont + 1);  
+            oSeriesTempTime.Values = xlWorkSheet.get_Range("C2", "C" + testCont + 1);
+            oSeriesTempTime.AxisGroup = Excel.XlAxisGroup.xlPrimary;
+            oSeriesTempTime.Name = "Temperature";  //nome da série de pontos
+            oSeriesTempTime.MarkerSize = 5;   //tamanho do ponto da curva
+            oSeriesTempTime.MarkerStyle = Excel.XlMarkerStyle.xlMarkerStyleSquare;   //estilo do ponto da curva
+            oSeriesTempTime.MarkerForegroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)5;   //5 = Azul
+            oSeriesTempTime.MarkerBackgroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)5;   //5 = Azul
+
+            Excel.Series oSeriesResTime = seriesCollectionTime.NewSeries();
+            oSeriesResTime.XValues = xlWorkSheet.get_Range("A2", "A" + testCont + 1);
+            oSeriesResTime.Values = xlWorkSheet.get_Range("D2", "D" + testCont + 1);
+            oSeriesResTime.AxisGroup = Excel.XlAxisGroup.xlSecondary;
+            oSeriesResTime.Name = "Resistance/R0";  //nome da série de pontos
+            oSeriesResTime.MarkerSize = 5;   //tamanho do ponto da curva
+            oSeriesResTime.MarkerStyle = Excel.XlMarkerStyle.xlMarkerStyleTriangle;   //estilo do ponto da curva
+            oSeriesResTime.MarkerForegroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)3;   //3 = Vermelho
+            oSeriesResTime.MarkerBackgroundColorIndex = (Microsoft.Office.Interop.Excel.XlColorIndex)3;   //3 = Vermelho
+
+            ctTimePage.HasTitle = true;
+            ctTimePage.ChartTitle.Text = "Temperature and resistance per time";
+            Excel.Axis yTimeTAxis = (Excel.Axis)ctTimePage.Axes(Excel.XlAxisType.xlValue, Excel.XlAxisGroup.xlPrimary);
+            yTimeTAxis.HasTitle = true;
+            yTimeTAxis.AxisTitle.Text = "Temperature (°C)";
+            Excel.Axis yTimeRAxis = (Excel.Axis)ctTimePage.Axes(Excel.XlAxisType.xlValue, Excel.XlAxisGroup.xlSecondary);
+            yTimeRAxis.HasTitle = true;
+            yTimeRAxis.AxisTitle.Text = "Resistance/R0";
+            yTimeRAxis.HasMajorGridlines = true;
+            yTimeRAxis.MajorGridlines.Border.LineStyle = Excel.XlLineStyle.xlDashDot;
+            yTimeRAxis.MajorGridlines.Format.Line.Transparency = 0.5F;
+            Excel.Axis xTimeAxis = (Excel.Axis)ctTimePage.Axes(Excel.XlAxisType.xlCategory, Excel.XlAxisGroup.xlPrimary);
+            xTimeAxis.HasTitle = true;
+            xTimeAxis.AxisTitle.Text = "Time (Milli Sec)";
+
+            
+            DirectoryInfo di = Directory.CreateDirectory(saveLocal.Text + "\\" + path);   //Cria uma pasta
+            
+            xlWorkBook.SaveAs(saveLocal.Text + "\\" + path + "\\Data_and_Graph.xls", Excel.XlFileFormat.xlWorkbookNormal);  //Salva o arquivo com o dia e a hora
+
+            xlWorkBook.Close(false, misValue, misValue);
+            xlApp.Quit();
+
+            liberarObjetos(xlWorkSheet);
+            liberarObjetos(xlWorkBook);
+            liberarObjetos(xlApp);
+
+
+            private object Color()
+           {
+                throw new NotImplementedException();
+           }
+
+            private void liberarObjetos(object obj)
+            {
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(obj);
+                    obj = null;
+                }
+                catch (Exception ex)
+                {
+                    obj = null;
+                    MessageBox.Show("Ocorreu um erro durante a liberação do objeto " + ex.ToString());
+                }
+                finally
+                {
+                    GC.Collect();
+                }
+            }
